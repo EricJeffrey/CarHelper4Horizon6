@@ -1,0 +1,9 @@
+__pycache__/
+models/
+test_*.png
+debug/
+foo.*
+example*.png
+carlist*.txt
+build/
+dist/

@@ -1,0 +1,11 @@
+pywin32>=306
+Pillow>=10.0.0
+paddlepaddle==3.2.0
+paddleocr==3.6.0
+PyQt5>=5.15.0
+requests>=2.31.0
+numpy>=1.24.0
+opencv-python>=4.8.0
+keyboard>=0.13.5
+rapidfuzz>=3.0.0
+pygame>=2.6.1

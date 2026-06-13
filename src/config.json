@@ -1,0 +1,57 @@
+{
+  "api": {
+    "enable": false,
+    "provider": "local",
+    "base_url": "http://localhost:8080",
+    "api_key": "",
+    "model": "local-model",
+    "timeout": 30,
+    "prompt_template": "从参赛记录与赛事高光、外观特点与设计语言、历史荣誉与行业地位、相关车辆文化与概念四个维度介绍一下{vehicle_name}，字数控制在1000字以内"
+  },
+  "capture": {
+    "highlight_color_range": {
+      "yellow": {
+        "r_min": 140,
+        "r_max": 220,
+        "g_min": 180,
+        "g_max": 255,
+        "b_min": 0,
+        "b_max": 60
+      }
+    },
+    "min_box_width": 200,
+    "min_box_height": 150,
+    "crop_top_ratio": 0.5
+  },
+  "input": {
+    "trigger_button": "RIGHTSTICK",
+    "trigger_key": "i",
+    "poll_interval": 0.016,
+    "process_stop_timeout": 2.0
+  },
+  "ocr": {
+    "det_model_dir": "../models/PP-OCRv5_mobile_det_infer",
+    "rec_model_dir": "../models/PP-OCRv5_mobile_rec_infer"
+  },
+  "match": {
+    "data_path": "../resources/cars_info.jsonl",
+    "match_threshold": 85,
+    "ambiguity_margin": 1,
+    "model_only_safe_threshold": 95
+  },
+  "debug": {
+    "enabled": false
+  },
+  "overlay": {
+    "width": 960,
+    "max_height": 720,
+    "opacity": 0.6,
+    "font_size": 20,
+    "scroll_speed": 1,
+    "scroll_interval": 30,
+    "scroll_delay": 2000,
+    "bg_color": "rgba(0, 0, 0, 0.6)",
+    "text_color": "#EEEEEE",
+    "err_win_pos": "right-center"
+  }
+}
