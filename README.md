@@ -1,12 +1,12 @@
+
 [English Version](README_EN.md).
 
 # 极限竞速地平线6 车辆信息助手
 
 **游戏内一键查看车辆详细介绍:**
 
-![Result Example](resources/imgs/result.png)
+https://github.com/user-attachments/assets/ffe60828-90d9-4970-bf38-2182df32f265
 
-[Demo Video](resources/demo.mp4)
 
 ## 功能特性
 

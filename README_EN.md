@@ -4,9 +4,8 @@
 
 **In-game vehicle info overlay for Forza Horizon 6.** Press a button, get car details instantly — no Alt+Tab needed.
 
-![Result Example](resources/imgs/result.png)
+https://github.com/user-attachments/assets/ffe60828-90d9-4970-bf38-2182df32f265
 
-[Demo Video](resources/demo.mp4)
 
 ## Features
 
