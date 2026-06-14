@@ -16,7 +16,6 @@ def normalize(text: str) -> str:
     _NORMALIZE_MAP = str.maketrans({
         "·": " ", "'": "'", "'": "'", '"': "'",
         "—": "-", "–": "-",
-        "0": "o",  # OCR O/0 混淆修复
         "é": "e", "è": "e", "ê": "e", "ë": "e",
         "ç": "c",
         "ü": "u",
@@ -28,21 +27,70 @@ def normalize(text: str) -> str:
         "à": "a", "ò": "o", "ù": "u",
     })
     text = text.translate(_NORMALIZE_MAP)
+    # OCR O/0 混淆修复：仅将被字母包围的 0 替换为 o（如 FI0RANO → FIORANO），
+    # 不替换数字中的 0（如 2020 不应变成 2o2o）
+    text = re.sub(r"(?<=[a-z])0|0(?=[a-z])", "o", text)
     # 将括号、连字符等替换为空格，便于分词匹配
     for ch in "()[]{}<>":
         text = text.replace(ch, " ")
     for ch in "-_/\\":
         text = text.replace(ch, " ")
+    # 字母-数字边界插入空格：E63S → E 63 S, 4RUNNER → 4 RUNNER
+    text = re.sub(r"([a-z])(\d)", r"\1 \2", text)
+    text = re.sub(r"(\d)([a-z])", r"\1 \2", text)
     # 去除多余空格
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
 
+# OCR 常见截断修正：缺失首字母或前缀
+_OCR_PREFIX_FIXES = {
+    "jhn": "john",
+    "iulia": "giulia",
+    "ontinental": "continental",
+    "ventador": "aventador",
+    "ancer": "lancer",
+    "mited": "limited",
+    "enterpe": "enterprises",
+    "erra": "sierra",
+}
+
+# OCR 常见截断修正：缺失后缀
+_OCR_SUFFIX_FIXES = {
+    "ultin": "ultimae",
+}
+
+# 车型后缀中文→英文映射（非厂商名，而是车型版本标识）
+_MODEL_SUFFIX_MAP = {
+    "极限竞速特別版": "forza edition",
+    "极限竞速特别版": "forza edition",
+}
+
+
+def _apply_ocr_fixes(text: str) -> list[str]:
+    """对 OCR 文本应用常见截断修正，返回原始文本 + 所有可能的修正版本。"""
+    variants = [text]
+    words = text.split()
+    for i, word in enumerate(words):
+        # 前缀修正
+        if word in _OCR_PREFIX_FIXES:
+            fixed = _OCR_PREFIX_FIXES[word]
+            new_words = words[:i] + [fixed] + words[i+1:]
+            variants.append(" ".join(new_words))
+        # 后缀修正
+        if word in _OCR_SUFFIX_FIXES:
+            fixed = _OCR_SUFFIX_FIXES[word]
+            new_words = words[:i] + [fixed] + words[i+1:]
+            variants.append(" ".join(new_words))
+    return variants
+
+
 def extract_core_tokens(text: str) -> set[str]:
-    """提取文本中的核心词元（长度>=2的字母数字串），用于关键词索引。"""
+    """提取文本中的核心词元（长度>=2的字母数字或中文字串），用于关键词索引。"""
     text = normalize(text)
-    # 保留字母、数字、空格，其余丢弃
-    text = re.sub(r"[^a-z0-9\s]", "", text)
+    # 保留字母、数字、中文、空格，其余替换成空格（避免中英文粘连）
+    text = re.sub(r"[^\u4e00-\u9fa5a-z0-9\s]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
     tokens = set()
     for token in text.split():
         token = token.strip()
@@ -87,8 +135,10 @@ class MatchModule:
         self.brand_cn_map: dict[str, list[int]] = {}
         self.brand_en_map: dict[str, list[int]] = {}
         self.token_index: dict[str, list[int]] = {}  # 核心词元 -> 索引列表
+        self.cn_to_en_map: dict[str, str] = {}       # 中文厂商/特例 -> 英文
 
         self._load_data()
+        self._load_cn_map()
 
     def _load_data(self):
         """加载 cars_info.jsonl 并构建索引。"""
@@ -149,6 +199,14 @@ class MatchModule:
 
         log(TAG, f"已加载 {len(self.entries)} 条车型数据")
 
+    def _load_cn_map(self):
+        """加载中文厂商/车型特例映射表。"""
+        map_path = self.jsonl_path.parent / "car_marker_map.json"
+        if map_path.exists():
+            with open(map_path, "r", encoding="utf-8") as f:
+                self.cn_to_en_map = json.load(f)
+            log(TAG, f"已加载 {len(self.cn_to_en_map)} 条中文映射")
+
     # ------------------------------------------------------------------
     # 对外接口
     # ------------------------------------------------------------------
@@ -160,8 +218,33 @@ class MatchModule:
         if not query or not query.strip():
             return None
 
+        # 归一化 + 中文厂商替换
         q = normalize(query)
+        for cn, en in sorted(self.cn_to_en_map.items(), key=lambda x: len(x[0]), reverse=True):
+            q = q.replace(cn, f" {en} ")
+        q = q.lower()
+        # 车型后缀替换（在去中文之前，保留英文版本标识）
+        for cn_suffix, en_suffix in _MODEL_SUFFIX_MAP.items():
+            q = q.replace(cn_suffix, f" {en_suffix} ")
+        q = re.sub(r"[\u4e00-\u9fa5]", "", q)
+        q = re.sub(r"\s+", " ", q).strip()
 
+        # 生成 OCR 修正变体（含原始）
+        variants = _apply_ocr_fixes(q)
+
+        # 对所有变体尝试匹配，取最佳结果
+        best_result = None
+        best_score = -1
+        for variant in variants:
+            result = self._match_normalized(variant)
+            if result is not None and result["score"] > best_score:
+                best_score = result["score"]
+                best_result = result
+
+        return best_result
+
+    def _match_normalized(self, q: str) -> dict | None:
+        """对已归一化的查询文本执行三级匹配。"""
         # ---------- Level 1: 精确匹配 ----------
         exact = self._level1_exact(q)
         if exact is not None:
@@ -251,13 +334,22 @@ class MatchModule:
         # 关键词匹配要求较高（90+），避免误配
         if best_idx >= 0 and best_score >= 90:
             # 检查歧义：候选集中是否有同样高分的条目
-            rivals = [
-                i for i in candidate_set
-                if i != best_idx
-                and int(len(q_tokens & extract_core_tokens(self.entries[i]["model"]))
-                        / max(len(q_tokens), 1) * 100)
-                >= best_score - self.ambiguity_margin
-            ]
+            # 注意：rivals 的分数计算必须与 best_score 一致（含数字加分）
+            rivals = []
+            for i in candidate_set:
+                if i == best_idx:
+                    continue
+                entry_tokens = extract_core_tokens(self.entries[i]["model"])
+                if not entry_tokens:
+                    continue
+                intersection = q_tokens & entry_tokens
+                score = int(len(intersection) / max(len(q_tokens), 1) * 100)
+                q_numbers = {t for t in q_tokens if t.isdigit()}
+                e_numbers = {t for t in entry_tokens if t.isdigit()}
+                if q_numbers and q_numbers <= e_numbers:
+                    score += 10
+                if score >= best_score - self.ambiguity_margin:
+                    rivals.append(i)
             if rivals:
                 log(TAG, f"关键词匹配存在歧义: top1_score={best_score}")
                 return None
@@ -306,12 +398,31 @@ class MatchModule:
         if not candidates:
             return None
 
-        candidates.sort(key=lambda x: x[1], reverse=True)
-        best_idx, best_score, best_type = candidates[0]
+        # 引入额外 token 惩罚：候选比查询多出的有效 token 每个扣 2 分，
+        # 避免子集关系导致标准版与扩展版（如 Forza Edition）同分进入歧义。
+        # Forza Edition / TM Edition 等后缀额外惩罚，优先匹配基础版。
+        _EDITION_PENALTY_TOKENS = {"forza", "edition", "tm"}
+        q_tokens = set(q.split())
+        adjusted = []
+        for idx, score, ctype in candidates:
+            text = (
+                self.full_names_en[idx] if ctype == "full_en"
+                else self.full_names_cn[idx] if ctype == "full_cn"
+                else self.models_only[idx]
+            )
+            extra = {t for t in text.split() if t not in q_tokens and len(t) >= 2}
+            penalty = len(extra) * 2
+            # Edition 后缀额外惩罚
+            edition_words = extra & _EDITION_PENALTY_TOKENS
+            penalty += len(edition_words) * 5
+            adjusted.append((idx, score - penalty, ctype))
+
+        adjusted.sort(key=lambda x: x[1], reverse=True)
+        best_idx, best_score, best_type = adjusted[0]
 
         # --- 歧义检测 1：top1 vs top2 分差（不同索引） ---
         rivals = [
-            c for c in candidates[1:]
+            c for c in adjusted[1:]
             if c[0] != best_idx and best_score - c[1] < self.ambiguity_margin
         ]
         if rivals:
