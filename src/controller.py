@@ -16,11 +16,6 @@ class Controller:
         log(TAG, "程序初始化中...")
         self.config = config
 
-        from overlay_module import OverlayModule, get_qapp
-        self.app = get_qapp()
-        self.lock = threading.Lock()
-        self.state = "IDLE"
-
         log(TAG, "初始化输入模块...")
         from input_module import InputModule
         self.input_module = InputModule(
@@ -40,6 +35,11 @@ class Controller:
         log(TAG, "初始化API模块...")
         from api_module import APIModule
         self.api_module = APIModule(config["api"])
+
+        from overlay_module import OverlayModule, get_qapp
+        self.app = get_qapp()
+        self.lock = threading.Lock()
+        self.state = "IDLE"
 
         log(TAG, "初始化悬浮窗模块...")
         from overlay_module import OverlayModule

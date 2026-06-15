@@ -10,7 +10,7 @@ from match_module import MatchModule
 
 
 DATA_PATH = Path(__file__).parent.parent / "resources" / "cars_info.jsonl"
-TEST_CASE_PATH = Path(__file__).parent / "test_case_match.jsonl"
+TEST_CASE_PATH = Path(__file__).parent / "testcases" / "test_case_match.jsonl"
 
 
 def load_test_cases():
